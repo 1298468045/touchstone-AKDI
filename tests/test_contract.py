@@ -52,6 +52,45 @@ def test_standards_has_java_rules(rule_index):
     assert sum(rule_index[r]["machine_checkable"] for r in java) >= 4
 
 
+# ---------------- SEC-001：硬编码密钥/凭据扫描（确定性、离线）----------------
+def test_sec001_detects_hardcoded_secrets(rule_index):
+    diff = build_diff([("src/api/auth.py", [
+        'AWS_KEY = "AKIAIOSFODNN7EXAMPLE"',
+        'token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789AB"',   # 36 chars after ghp_
+        'api_key = "AIzaSyA" + "B" * 29',                        # Google key 形状
+    ], True)])
+    finds = cc.check_contract_consistency(diff, {}, rule_index)
+    sec = [f for f in finds if f["rule_id"] == "SEC-001"]
+    assert sec and all(f["category"] == "security" for f in sec)
+    # 注意：上面的占位值会被 _PLACEHOLDER 过滤；用真值再验一次
+    diff2 = build_diff([("src/c.py", ['TOKEN = "sk-proj-abcd1234efgh5678ijkl9012mnop3456"'], True)])
+    finds2 = cc.check_contract_consistency(diff2, {}, rule_index)
+    assert any(f["rule_id"] == "SEC-001" for f in finds2)
+
+
+def test_sec001_detects_pem_private_key(rule_index):
+    diff = build_diff([("deploy/key.pem", ["-----BEGIN RSA PRIVATE KEY-----", "MIIE..."], True)])
+    finds = cc.check_contract_consistency(diff, {}, rule_index)
+    assert any(f["rule_id"] == "SEC-001" for f in finds)
+
+
+def test_sec001_skips_placeholders(rule_index):
+    diff = build_diff([("src/c.py", [
+        'api_key = "your_api_key_here"',
+        'password = "example-password"',
+        'token = "<replace-me>"',
+    ], True)])
+    finds = cc.check_contract_consistency(diff, {}, rule_index)
+    assert not any(f["rule_id"] == "SEC-001" for f in finds)
+
+
+def test_sec002_injection_not_built_in(rule_index):
+    """SEC-002（SQL/命令注入）依赖外部 SAST，内置扫描器不检出——锁死边界。"""
+    diff = build_diff([("src/q.py", ['sql = "SELECT * FROM u WHERE n=\'" + name + "\'"'], True)])
+    finds = cc.check_contract_consistency(diff, {}, rule_index)
+    assert not any(f["rule_id"] == "SEC-002" for f in finds)
+
+
 # ---------------- 内联锚定（删除行/超界行降级）----------------
 _ANCHOR_DIFF = (
     "diff --git a/app/x.py b/app/x.py\n--- a/app/x.py\n+++ b/app/x.py\n"
