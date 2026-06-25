@@ -21,6 +21,15 @@ def test_scope_violation_fires(rule_index):
     assert any(f["rule_id"] == "SCOPE-001" for f in finds)
 
 
+def test_scope_placeholder_template_does_not_fire(rule_index):
+    """未填的 pr.yaml 模板（scope 为 <...> 占位符）不应刷屏 SCOPE-001——
+    与 SEC-001 豁免测试文件同类：系统不应因自己的模板/夹具产生假阳性。"""
+    diff = build_diff([("src/a.py", ["x = 1"], True), ("docs/b.md", ["y"], True)])
+    contract = {"scope": ["<path/glob，如 src/parser/**>"]}   # pr.yaml 模板里的占位符
+    finds = cc.check_contract_consistency(diff, contract, rule_index)
+    assert not any(f["rule_id"] == "SCOPE-001" for f in finds)
+
+
 def test_tests_claimed_but_absent_fires(rule_index):
     diff = build_diff([("a/x.py", ["x = 1"], True)])
     contract = {"scope": ["a/**"], "tests_added": ["test_x.py"]}

@@ -59,6 +59,9 @@ def _match_any(path, globs):
 
 
 def check_scope(files, scope, rule_index):
+    # 跳过模板占位符（以 '<' 开头，如未填的 pr.yaml 里 "<path/glob…>"）——
+    # 与 check_tests 同构：占位符不算真实声明，否则会对每个文件刷假阳性 SCOPE-001。
+    scope = [s for s in (scope or []) if s and not str(s).startswith("<")]
     if not scope:
         return []
     return [_finding("SCOPE-001", f, 0, "scope_creep",
